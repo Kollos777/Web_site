@@ -2,7 +2,10 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import urllib.parse
 import mimetypes
 import pathlib
-
+import threading
+import json
+import socket
+from datetime import datetime
 
 
 class HttpHandler(BaseHTTPRequestHandler):
@@ -28,6 +31,7 @@ class HttpHandler(BaseHTTPRequestHandler):
         self.send_response(302)
         self.send_header('Location', '/')
         self.end_headers()
+        self.socket_server(data_dict)
 
     def send_html_file(self, filename, status=200):
         self.send_response(status)
@@ -35,6 +39,17 @@ class HttpHandler(BaseHTTPRequestHandler):
         self.end_headers()
         with open(filename, 'rb') as fd:
             self.wfile.write(fd.read())
+
+    def socket_server(self, data_dict):
+        data_dict['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
+        data_bytes = json.dumps(data_dict).encode('utf-8')
+        
+        UDP_IP = "127.0.0.1"
+        UDP_PORT = 5000
+        
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.sendto(data_bytes, (UDP_IP, UDP_PORT))
+        sock.close()
 
     def send_static(self):
         self.send_response(200)
@@ -57,7 +72,42 @@ def run(server_class=HTTPServer, handler_class=HttpHandler):
     except KeyboardInterrupt:
         http.server_close()
 
+def run_socket():
+    UDP_IP = "127.0.0.1"
+    UDP_PORT = 5000
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind((UDP_IP, UDP_PORT))
+
+    while True:
+        data, _ = sock.recvfrom(1024)
+        data_dict = json.loads(data.decode('utf-8'))
+
+        with open('storage/data.json', 'r+') as f:
+            try:
+                data_json = json.load(f)
+            except json.JSONDecodeError:
+                data_json = {}
+            
+            data_json[data_dict['timestamp']] = {
+                'username': data_dict['username'],
+                'message': data_dict['message']
+            }
+
+            f.seek(0)
+            json.dump(data_json, f, indent=2)
+            f.truncate()
+
 
 if __name__ == '__main__':
-    run()
+
+    http_thread = threading.Thread(target=run)
+    http_thread.daemon = True
+    http_thread.start()
+
+    udp_thread = threading.Thread(target=run_socket)
+    udp_thread.daemon = True
+
+    udp_thread.start()
+    http_thread.join()
 
