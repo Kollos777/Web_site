@@ -101,6 +101,11 @@ def run_socket():
 
 if __name__ == '__main__':
 
+    pathlib.Path('storage').mkdir(exist_ok=True)
+    if not pathlib.Path('storage/data.json').exists():
+        with open('storage/data.json', 'w') as file:
+            json.dump({}, file)
+
     http_thread = threading.Thread(target=run)
     http_thread.daemon = True
     http_thread.start()
